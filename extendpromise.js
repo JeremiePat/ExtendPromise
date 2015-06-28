@@ -6,14 +6,18 @@
   var REJECT_STATE  = 'reject';
 
 
+  // The Defered object
+  // --------------------------------------------------------------------------
+
+  // Create a new Defered object
   function Defered() {
     this.status  = PENDING_STATE;
 
     // Unique user facing objet with the usable API.
     this.promise = new DummyPromise();
-    this.promise['then']     = this.action.bind(this, RESOLVE_STATE);
-    this.promise['catch']    = this.action.bind(this, REJECT_STATE);
-    this.promise['progress'] = this.action.bind(this, PENDING_STATE);
+    this.promise['then']     = this.recorder.bind(this, RESOLVE_STATE);
+    this.promise['catch']    = this.recorder.bind(this, REJECT_STATE);
+    this.promise['progress'] = this.recorder.bind(this, PENDING_STATE);
     this.promise['cancel']   = this.cancel.bind(this);
 
     // Record of function to be executed
@@ -26,9 +30,22 @@
     this.execChain = [];
   }
 
+  // Call when a resolution came up (fulfill, reject or progress)
+  //
+  // Note: All the arguments (except for the first one which is the type of the
+  //       resolution) are passed to each callback function pending for the
+  //       given type of resolution.
+  //
+  // * type <string>: One of the three possible resolution state:
+  //                  PENDING_STATE (for progress),
+  //                  RESOLVE_STATE (when the promise is fulfilled)
+  //                  REJECT_STATE (when the promise fail)
   Defered.prototype.resolver = function (type) {
     if (this.status !== PENDING_STATE) { return; }
 
+    // If there is already an exec chain in progress,
+    // we loop asyncronously up to its full resolution.
+    // This is necessary to avoid weird behaviors on progress
     if (this.execChain.length > 0) {
       var args = arguments;
       setTimeout((function () {
@@ -44,7 +61,17 @@
     setTimeout(this.pileOut.bind(this), 0);
   };
 
-  Defered.prototype.action   = function (action, fn) {
+  // Call to record a resolution callback function
+  //
+  // * action <string>: One of the three possible resolution state:
+  //                    PENDING_STATE (for progress),
+  //                    RESOLVE_STATE (when the promise is fulfilled)
+  //                    REJECT_STATE (when the promise fail)
+  // * fn <function>: A callback function to be called when the associate
+  //                  resolution state is reached.
+  //
+  // return a DummyPromise
+  Defered.prototype.recorder = function (action, fn) {
     if (this.status !== PENDING_STATE) {
       if (this.status === action) {
         fn.apply(null, this.result);
@@ -60,15 +87,25 @@
     return this.promise;
   };
 
-  Defered.prototype.cancel   = function (time) {
-    var delay = time === +time && time > 0 ? time : 0;
+  // Call to cancel the promise
+  //
+  // Note: When a promise is canceled, it is rejected. However, canceling is
+  //       asynchronous, which means that when the cancel method is called,
+  //       there is no gurantee the promise will be reject. It can be fulfilled
+  //       between the call to cancel and the actual cancel attempt.
+  //
+  // * time <number>: A delay in millisecond before triying to cancel the
+  //                  promise, default to 0.
+  Defered.prototype.cancel = function (time) {
+    var delay = time > 0 ? Number(time) : 0;
 
-    setTimeout(this.resolver.bind(this, REJECT_STATE), delay);
+    setTimeout(this.resolver.bind(this, REJECT_STATE, 'canceled'), delay);
 
     return this.promise;
   };
 
-  Defered.prototype.pileOut  = function () {
+  // Launch and manage the chain of callback to be run
+  Defered.prototype.pileOut = function () {
     if (this.execChain.length === 0) {
       this.execChain = this.status !== PENDING_STATE ?
                        this.cbChain[this.status] :
@@ -83,14 +120,19 @@
       fn.apply(null, this.result);
 
       if (this.execChain.length > 0) {
-        setTimeout(this.pileOut.bind(this), 0)
+        setTimeout(this.pileOut.bind(this), 0);
       }
     }
   };
 
 
+  // The ExtendPromise factory
+  // --------------------------------------------------------------------------
 
   // Create an ExtendPromise
+  //
+  // Note: ExtendPromise is a factory, not a constructor,
+  //       it's useless to call `new` with it.
   //
   // * fn <function> The function where the logic to resolve the promise is
   //                 define by the user. It get 3 input parameters: resolve,
@@ -246,15 +288,18 @@
     return defer.promise;
   };
 
+
+  // Prototype chain
+  // --------------------------------------------------------------------------
   // Only for people who wish to do `foo instanceof Promise`
   // but ExtendPromise is not meant to be extensible through prototype
   if (Promise) {
     ExtendPromise.prototype = Object.create(Promise.prototype);
   }
 
-
   function DummyPromise() {}
   DummyPromise.prototype = Object.create(ExtendPromise.prototype);
+
 
   // Expose the API to the outside world
   window.ExtendPromise = ExtendPromise;
