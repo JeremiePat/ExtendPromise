@@ -1,4 +1,27 @@
-(function () {
+(function (name, factory) {
+  'use strict';
+  // NodeJS
+  if (module && module.exports) {
+    module.id      = name;
+    module.exports = factory();
+  }
+
+  // CommonJS 1.1
+  else if (module && exports) {
+    module.id = name;
+    exports   = factory();
+  }
+
+  // AMD modules
+  else if (typeof define === 'function') {
+    define(name, factory);
+  }
+
+  // Simple global binding for web browsers
+  else if (window) {
+    window[name] = factory();
+  }
+}('ExtendPromise', function () {
   'use strict';
 
   var PENDING_STATE = 'pending';
@@ -291,7 +314,7 @@
 
   // Prototype chain
   // --------------------------------------------------------------------------
-  // Only for people who wish to do `foo instanceof Promise`
+  // Only for people who wish to test `ExtendPromise instanceof Promise`
   // but ExtendPromise is not meant to be extensible through prototype
   if (Promise) {
     ExtendPromise.prototype = Object.create(Promise.prototype);
@@ -302,5 +325,6 @@
 
 
   // Expose the API to the outside world
-  window.ExtendPromise = ExtendPromise;
-})();
+  // --------------------------------------------------------------------------
+  return ExtendPromise;
+}));
