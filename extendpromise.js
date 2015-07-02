@@ -1,5 +1,6 @@
 (function (name, factory) {
   'use strict';
+
   // NodeJS
   if (module && module.exports) {
     module.id      = name;
@@ -38,10 +39,10 @@
 
     // Unique user facing objet with the usable API.
     this.promise = new DummyPromise();
-    this.promise['then']     = this.recorder.bind(this, RESOLVE_STATE);
-    this.promise['catch']    = this.recorder.bind(this, REJECT_STATE);
-    this.promise['progress'] = this.recorder.bind(this, PENDING_STATE);
-    this.promise['cancel']   = this.cancel.bind(this);
+    this.promise.then     = this.recorder.bind(this, RESOLVE_STATE);
+    this.promise.catch    = this.recorder.bind(this, REJECT_STATE);
+    this.promise.progress = this.recorder.bind(this, PENDING_STATE);
+    this.promise.cancel   = this.cancel.bind(this);
 
     // Record of function to be executed
     this.cbChain = {};
