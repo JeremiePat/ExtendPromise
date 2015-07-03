@@ -181,7 +181,7 @@
 
   // Return an ExtendPromise that will resolve once all
   // the input ExtendPromise would have succeed
-  ExtendPromise.all = function (list) {
+  ExtendPromise.all = function all(list) {
     var defer = new Defered();
     var count = 0;
 
@@ -190,14 +190,14 @@
       throw new Error('ExtendPromise.all expect an array of ExtendPromise objects');
     }
 
-    list.forEach(function (i, p) {
-      if (typeof p.error !== 'function' &&
-          typeof p.then !== 'function'  &&
+    list.forEach(function (p) {
+      if (typeof p.catch    !== 'function' &&
+          typeof p.then     !== 'function' &&
           typeof p.progress !== 'function') {
         throw new Error('ExtendPromise.all expect an array of ExtendPromise objects');
       }
 
-      p.error(function () {
+      p.catch(function () {
         defer.resolver(REJECT_STATE);
       });
 
@@ -218,15 +218,15 @@
 
   // Return an ExtendPromise that will resolve or reject
   // as soon as one of the input ExtendPromise succeed
-  ExtendPromise.race = function(list) {
+  ExtendPromise.race = function race(list) {
     var defer = new Defered();
 
     if (!Array.isArray(list) || list.length === 0) {
       throw new Error('ExtendPromise.all expect an array of ExtendPromise objects');
     }
 
-    list.forEach(function (i, p) {
-      if (typeof p.error !== 'function' && typeof p.then !== 'function') {
+    list.forEach(function (p) {
+      if (typeof p.catch !== 'function' && typeof p.then !== 'function') {
         throw new Error('ExtendPromise.all expect an array of ExtendPromise objects');
       }
 
@@ -236,7 +236,7 @@
         defer.resolver.apply(defer, args);
       });
 
-      p.error(function () {
+      p.catch(function () {
         var args = Array.prototype.slice.call(arguments);
         args.unshift(REJECT_STATE);
         defer.resolver.apply(defer, args);
@@ -248,7 +248,7 @@
 
   // Return an ExtendPromise that will resolve as soon as
   // one of the input ExtendPromise succeed
-  ExtendPromise.some = function (list) {
+  ExtendPromise.some = function some(list) {
     var defer = new Defered();
     var count = 0;
 
@@ -256,8 +256,8 @@
       throw new Error('ExtendPromise.all expect an array of ExtendPromise objects');
     }
 
-    list.forEach(function (i, p) {
-      if (typeof p.error !== 'function' && typeof p.then !== 'function') {
+    list.forEach(function (p) {
+      if (typeof p.catch !== 'function' && typeof p.then !== 'function') {
         throw new Error('ExtendPromise.all expect an array of ExtendPromise objects');
       }
 
@@ -265,7 +265,7 @@
         defer.resolver(RESOLVE_STATE);
       });
 
-      p.error(function () {
+      p.catch(function () {
         count += 1;
         if (count === list.length) {
           defer.resolver(REJECT_STATE);
@@ -278,7 +278,7 @@
 
   // Return an ExtendPromise that will resolved once all
   // the input ExtendPromise would have failed
-  ExtendPromise.none = function (list) {
+  ExtendPromise.none = function none(list) {
     var defer = new Defered();
     var count = 0;
 
@@ -286,9 +286,9 @@
       throw new Error('ExtendPromise.all expect an array of ExtendPromise objects');
     }
 
-    list.forEach(function (i, p) {
-      if (typeof p.error !== 'function' &&
-          typeof p.then !== 'function'  &&
+    list.forEach(function (p) {
+      if (typeof p.catch    !== 'function' &&
+          typeof p.then     !== 'function' &&
           typeof p.progress !== 'function') {
         throw new Error('ExtendPromise.all expect an array of ExtendPromise objects');
       }
@@ -297,7 +297,7 @@
         defer.resolver(REJECT_STATE);
       });
 
-      p.error(function () {
+      p.catch(function () {
         count += 1;
         if (count === list.length) {
           defer.resolver(RESOLVE_STATE);
