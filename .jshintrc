@@ -18,7 +18,7 @@
   "indent"      : 2,
   "smarttabs"   : false,
   "unused"      : true,
-  "newcap"      : true,
+  "newcap"      : false,
   "noarg"       : true,
   "quotmark"    : "single",
   "trailing"    : true,
