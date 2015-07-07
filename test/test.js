@@ -3,10 +3,60 @@
 
 // REQUIRED MODULES FOR TESTING
 // ============================================================================
-var assert = require('assert');
+var assert        = require('assert');
 var ExtendPromise = require('../extendpromise.js');
-var noop = function () {};
+var noop          = function () {};
 
+
+// UTILS
+// ============================================================================
+var progressCount = 5;
+
+function buildResolver(result, async) {
+  var count = progressCount;
+
+  function resolver(resolve, reject, next) {
+    if (result === 'resolve' || count === 0) {
+      if (async) { setTimeout(resolve, 0); }
+      else { resolve(); }
+    }
+
+    else if (result === 'reject') {
+      if (async) { setTimeout(reject, 0); }
+      else { reject(); }
+    }
+
+    else {
+      if (async) {
+        setTimeout(function () {
+          next(--count);
+          resolver(resolve, reject, next);
+        }, 0);
+      } else {
+        next(--count);
+        resolver(resolve, reject, next);
+      }
+    }
+  }
+
+  return resolver;
+}
+
+function pendingCallStatus(method, isCalled, timeout) {
+  return function (done) {
+    method(function () {
+      assert.ok(isCalled);
+      done();
+    });
+
+    if (!isCalled) {
+      setTimeout(function () {
+        assert.ok(true);
+        done();
+      }, timeout);
+    }
+  };
+}
 
 // TESTS DEFINITION
 // ============================================================================
@@ -121,70 +171,192 @@ function extendPromiseIO() {
 
 // Test basic Promise functionality
 // ----------------------------------------------------------------------------
-function extendPromiseThenSync() {
-  var request = ExtendPromise(function (resolve) {
-    resolve();
-  });
+function extendPromiseBasic() {
+  [
+    { title: 'Check basic promise fulfilled',
+      resolver: 'resolve', results: [
+      {fn: 'catch',    isCalled: false},
+      {fn: 'progress', isCalled: false},
+      {fn: 'then',     isCalled: true }
+    ]},
+    { title: 'Check basic promise reject',
+      resolver: 'reject', results: [
+      {fn: 'catch',    isCalled: true },
+      {fn: 'progress', isCalled: false},
+      {fn: 'then',     isCalled: false}
+    ]}
+  ]
+  .forEach(function (test) {
+    describe(test.title, function () {
+      describe('Test synchronous resolution', function () {
+        var request = ExtendPromise(buildResolver(test.resolver, false));
 
-  it('"then" callback is called synchronously', function () {
-    request.then(function () {
-      assert.ok(true, 'Instant call');
+        test.results.forEach(function (result) {
+          var title = [result.fn, ' callback is ', result.isCalled ? '' : 'never ', 'call'].join('');
+          it(title, pendingCallStatus(request[result.fn].bind(request), result.isCalled, 10));
+        });
+      });
+
+      describe('Test asynchronous resolution', function () {
+        var request = ExtendPromise(buildResolver(test.resolver, true));
+
+        test.results.forEach(function (result) {
+          var title = [result.fn, ' callback is ', result.isCalled ? '' : 'never ', 'call'].join('');
+          it(title, pendingCallStatus(request[result.fn].bind(request), result.isCalled, 10));
+        });
+      });
     });
-  });
-
-  it('"catch" callback is never call', function (done) {
-    request.catch(function () {
-      assert.ok(false, 'This sould not happen');
-      done();
-    });
-
-    setTimeout(done, 30);
-  });
-
-  it('"progress" callback is never call', function (done) {
-    request.progress(function () {
-      assert.ok(false, 'This sould not happen');
-      done();
-    });
-
-    setTimeout(done, 30);
   });
 }
 
-function extendPromiseThenAsync() {
-  var request = ExtendPromise(function (resolve) {
-    setTimeout(resolve, 100);
-  });
+// Test progress Promise functionality
+// ----------------------------------------------------------------------------
+function extendPromiseProgress() {
+  it('Progress ' + progressCount + ' time then fulfilled', function (done) {
+    this.timeout(50 * (progressCount + 1));
 
-  it('"then" callback is called asynchronously', function (done) {
-    request.then(function () {
-      assert.ok(true, 'Async call');
+    var request = ExtendPromise(buildResolver('progress', true));
+    var count   = 0;
+
+    function resolve(isOk) {
+      if (!isOk) {
+        assert.ok(false, 'Progress should be fulfilled once progress is done');
+      }
+
+      else {
+        assert.equal(count, progressCount);
+      }
+
       done();
-    });
-  });
+    }
 
-  it('"catch" callback is never call', function (done) {
-    request.catch(function () {
-      assert.ok(false, 'This sould not happen');
-      done();
-    });
-
-    setTimeout(done, 30);
-  });
-
-  it('"progress" callback is never call', function (done) {
     request.progress(function () {
-      assert.ok(false, 'This sould not happen');
-      done();
+      count++;
+    })
+    .then(function () {
+      resolve(true);
+    })
+    .catch(function () {
+      resolve(false);
     });
+  });
 
-    setTimeout(done, 30);
+  it('A sync call to the next() resolver does not trigger any progress callback', function (done) {
+    this.timeout(50 * (progressCount + 1));
+
+    var request = ExtendPromise(buildResolver('progress', false));
+    var count   = 0;
+
+    function resolve(isOk) {
+      if (!isOk) {
+        assert.ok(false, 'Progress should be fulfilled once progress is done');
+      }
+
+      else {
+        assert.equal(count, 0);
+      }
+
+      done();
+    }
+
+    request.progress(function () {
+      count++;
+    })
+    .then(function () {
+      resolve(true);
+    })
+    .catch(function () {
+      resolve(false);
+    });
   });
 }
 
-function extendPromiseThen() {
-  describe('Basic promise syncronously resolved', extendPromiseThenSync);
-  describe('Basic promise asyncronously resolved', extendPromiseThenAsync);
+// Test cancel Promise functionality
+// ----------------------------------------------------------------------------
+function extendPromiseCancel() {
+  function simpleCanceling(value) {
+    var isTrue      = value === true;
+    var isFalse     = value === false;
+    var isString    = typeof value === 'string';
+    var isUndefined = typeof value === 'undefined';
+    var isNaN       = Number.isNaN(value);
+    var isArray     = Array.isArray(value);
+    var isNull      = !value && typeof value === 'object';
+    var isFunction  = typeof value === 'function';
+    var isObject    = !isArray && !isNull && typeof value === 'object';
+    var title = ['Call ExtendPromise.cancel(',
+      isString ? '"': '',
+      isNaN ? 'NaN' :
+      isUndefined ? 'undefined' :
+      isNull ? 'null' :
+      isFunction ? 'function () {}' :
+      isTrue ? 'true' :
+      isFalse ? 'false' :
+      isObject ? '{}' :
+      isArray ? '[]'  : value,
+      isString ? '"': '',
+      ') (attempt to be fulfilled after 100ms)'].join('');
+
+    it(title, function (done) {
+      var request = ExtendPromise(function (resolve) {
+        setTimeout(resolve, 100);
+      });
+
+      request
+      .then(function () {
+        assert.ok(false, 'A canceled promess should never be fulfilled');
+        done();
+      })
+      .catch(function () {
+        assert.ok(true);
+        done();
+      })
+      .cancel(value);
+    });
+  }
+
+  describe('Check calling cancel() with numeric values (numbers or string representing numbers)', function () {
+    [-1, '-1', 0, '0', 30, '30'].forEach(simpleCanceling);
+  });
+
+  describe('Calling cancel() with non numeric value should act as if it where 0', function () {
+    [noop, null, NaN, [], {}, true, false].forEach(simpleCanceling);
+  });
+
+  it('Cancel a fulfilled promise does not change its status', function (done) {
+    var request = ExtendPromise(function (resolve) {
+      resolve();
+    });
+
+    request
+    .catch(function () {
+      assert.ok(false, 'Canceling a fulfilled promess should not change its status');
+      done();
+    })
+    .cancel(0);
+
+    setTimeout(function () {
+      assert.ok(true);
+      done();
+    }, 10);
+  });
+
+  it('Cancelling a promise is always asynchrounous', function (done) {
+    var request = ExtendPromise(function (resolve) {
+      setTimeout(resolve, 0);
+    });
+
+    request
+    .then(function () {
+      assert.ok(true);
+      done();
+    })
+    .catch(function () {
+      assert.ok(false, 'Canceling a fulfilled promess should not change its status');
+      done();
+    })
+    .cancel(0);
+  });
 }
 
 // RUN TESTS
@@ -192,4 +364,6 @@ function extendPromiseThen() {
 
 describe('Check ExtendPromise module signature', extendPromiseSignature);
 describe('Check ExtendPromise IO', extendPromiseIO);
-describe('Check ExtendPromise being fulfilled', extendPromiseThen);
+describe('Check ExtendPromise basic resolution', extendPromiseBasic);
+describe('Check ExtendPromise progress', extendPromiseProgress);
+describe('Check ExtendPromise cancel', extendPromiseCancel);
