@@ -153,7 +153,7 @@
   // The ExtendPromise factory
   // --------------------------------------------------------------------------
 
-  // Create an ExtendPromise
+  // Creates an ExtendPromise
   //
   // Note: ExtendPromise is a factory, not a constructor,
   //       it's useless to call `new` with it.
@@ -179,7 +179,7 @@
     return defer.promise;
   }
 
-  // Return an ExtendPromise that will resolve once all
+  // Returns an ExtendPromise that will resolve once all
   // the input ExtendPromise would have succeed
   ExtendPromise.all = function all(list) {
     var defer = new Defered();
@@ -216,7 +216,7 @@
     return defer.promise;
   };
 
-  // Return an ExtendPromise that will resolve or reject
+  // Returns an ExtendPromise that will resolve or reject
   // as soon as one of the input ExtendPromise succeed
   ExtendPromise.race = function race(list) {
     var defer = new Defered();
@@ -246,7 +246,7 @@
     return defer.promise;
   };
 
-  // Return an ExtendPromise that will resolve as soon as
+  // Returns an ExtendPromise that will resolve as soon as
   // one of the input ExtendPromise succeed
   ExtendPromise.some = function some(list) {
     var defer = new Defered();
@@ -276,7 +276,7 @@
     return defer.promise;
   };
 
-  // Return an ExtendPromise that will resolved once all
+  // Returns an ExtendPromise that will resolved once all
   // the input ExtendPromise would have failed
   ExtendPromise.none = function none(list) {
     var defer = new Defered();
