@@ -312,6 +312,28 @@
     return defer.promise;
   };
 
+  // Returns an ExtendPromise object that is rejected with the given reason.
+  ExtendPromise.reject = function reject(reason) {
+    var defer = new Defered();
+    defer.resolver(REJECT_STATE, reason);
+    return defer.promise;
+  };
+
+  // Returns an ExtendPromise object that is resolved with the given value.
+  ExtendPromise.resolve = function resolve(value) {
+    var defer = new Defered();
+
+    if (value && typeof value.then === 'function') {
+      value.then(function (result) {
+        defer.resolver(RESOLVE_STATE, result);
+      });
+    } else {
+      defer.resolver(RESOLVE_STATE, value);
+    }
+
+    return defer.promise;
+  };
+
 
   // Prototype chain
   // --------------------------------------------------------------------------
