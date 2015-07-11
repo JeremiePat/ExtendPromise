@@ -192,9 +192,8 @@
 
     list.forEach(function (p) {
       if (typeof p.catch    !== 'function' &&
-          typeof p.then     !== 'function' &&
-          typeof p.progress !== 'function') {
-        throw new Error('ExtendPromise.all expect an array of ExtendPromise objects');
+          typeof p.then     !== 'function') {
+        throw new Error('ExtendPromise.all expect an array of Promise like objects');
       }
 
       p.catch(function () {
@@ -222,12 +221,12 @@
     var defer = new Defered();
 
     if (!Array.isArray(list) || list.length === 0) {
-      throw new Error('ExtendPromise.all expect an array of ExtendPromise objects');
+      throw new Error('ExtendPromise.race expect an array of Promise like objects');
     }
 
     list.forEach(function (p) {
       if (typeof p.catch !== 'function' && typeof p.then !== 'function') {
-        throw new Error('ExtendPromise.all expect an array of ExtendPromise objects');
+        throw new Error('ExtendPromise.race expect an array of Promise like objects');
       }
 
       p.then(function () {
@@ -253,12 +252,12 @@
     var count = 0;
 
     if (!Array.isArray(list) || list.length === 0) {
-      throw new Error('ExtendPromise.all expect an array of ExtendPromise objects');
+      throw new Error('ExtendPromise.some expect an array of Promise like objects');
     }
 
     list.forEach(function (p) {
       if (typeof p.catch !== 'function' && typeof p.then !== 'function') {
-        throw new Error('ExtendPromise.all expect an array of ExtendPromise objects');
+        throw new Error('ExtendPromise.some expect an array of Promise like objects');
       }
 
       p.then(function () {
