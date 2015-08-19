@@ -6,7 +6,7 @@ The ExtendPromise library provide a [Promise](https://developer.mozilla.org/en-U
 * ExtendPromise allow to track fulfillment progress
 * ExtendPromise provides extra resolution methods for list of Promises
 
-This library is really in its infancy, so if you want a robust Promise library ready for production code you should consider looking at the [bluebird](https://github.com/petkaantonov/bluebird) or [RSVP](https://github.com/tildeio/rsvp.js) library.
+This library is really in its infancy, so if you want a robust Promise library ready for production code you should consider looking at the [bluebird](https://github.com/petkaantonov/bluebird) or [RSVP](https://github.com/tildeio/rsvp.js) libraries.
 
 
 # Support
@@ -26,31 +26,25 @@ All those features can be [polyfilled](https://github.com/es-shims/es5-shim) as 
 
 ## API overview
 
-* `_extendPromiseInstance_ ExtendPromise(_function_ resolver)`
+* `<extendPromiseInstance> ExtendPromise(<function> resolver)`
 
-* `_extendPromiseInstance_ ExtendPromise.all(_Array_ list)`
-* `_extendPromiseInstance_ ExtendPromise.race(_Array_ list)`
-* `_extendPromiseInstance_ ExtendPromise.some(_Array_ list)`
-* `_extendPromiseInstance_ ExtendPromise.none(_Array_ list)`
-* `_extendPromiseInstance_ ExtendPromise.reject(_String_ reason)`
-* `_extendPromiseInstance_ ExtendPromise.resolve(_any_ value)`
+* `<extendPromiseInstance> ExtendPromise.all(<Array> list)`
+* `<extendPromiseInstance> ExtendPromise.race(<Array> list)`
+* `<extendPromiseInstance> ExtendPromise.some(<Array> list)`
+* `<extendPromiseInstance> ExtendPromise.none(<Array> list)`
+* `<extendPromiseInstance> ExtendPromise.reject(<String> reason)`
+* `<extendPromiseInstance> ExtendPromise.resolve(<any> value)`
 
-* `_extendPromiseInstance_ _extendPromiseInstance_.then(_function_ callback)`
-* `_extendPromiseInstance_ _extendPromiseInstance_.catch(_function_ callback)`
-* `_extendPromiseInstance_ _extendPromiseInstance_.progress(_function_ callback)`
-* `_extendPromiseInstance_ _extendPromiseInstance_.cancel(_number_ timeout)`
+* `<extendPromiseInstance> <extendPromiseInstance>.then(<function> callback)`
+* `<extendPromiseInstance> <extendPromiseInstance>.catch(<function> callback)`
+* `<extendPromiseInstance> <extendPromiseInstance>.progress(<function> callback)`
+* `<extendPromiseInstance> <extendPromiseInstance>.cancel(<number> timeout)`
 
 ## The ExtendPromise function
 
 The ExtendPromise function is a factory, not a constructor. It means that you can use it without the `new` operator.
 
 ```javascript
-// For NodeJS. Within a browser, ExtendPromise
-// is available in the global scope.
-if (module && module.exports) {
-  var ExtendPromise = require('ExtendPromise');
-}
-
 var promise = ExtendPromise(function (resolve, reject, next) {
   /* Do your stuff here */
 })
@@ -195,39 +189,43 @@ expectSome
 
 ### ExtendPromise.none
 
-TBD
+This method expect an Array of Promise like objects (meaning with a `then` and `catch` method). It's the opposite of `ExtendPromise.all`. It will be fulfilled only if all Promise are rejected. It means that it will be rejected as soon as one of the Promise is fulfilled.
 
 ### ExtendPromise.reject
 
-TBD
+This method return an ExtendPromise which is fulfilled no matter what.
 
 ### ExtendPromise.resolve
 
-TBD
+This method return an ExtendPromise which is reject no matter what.
 
 ## ExtendPromise instances
 
-Each call to the ExtendPromise factory or to one of the ExtendPromise resolver method will return an ExtendPromise object with the following chainable methods:
+Each call to the ExtendPromise factory or to one of the ExtendPromise resolver method will return an ExtendPromise object with the following chainable methods (meaning they return the ExtendPromise object itself):
 
 * [`then`](#then)
 * [`catch`](#catch)
 * [`progress`](#progress)
 * [`cancel`](#cancel)
 
+For the then, catch and progress method, each callback recorded with those function is guaranty to be executed in the order it is recorded.
+
 ### then
-Record a callback function to be executed once the promise is fulfilled. Each callback is guaranty to be executed in the order it is recorded.
+Record a callback function to be executed once the promise is fulfilled.
 
 ### catch
 
-TBD
+Record a callback function to be executed once the promise is rejected.
 
 ### progress
 
-TBD
+Record a callback function to be executed each time an update notification is provided.
 
 ### cancel
 
-TBD
+A call to this method will try to cancel the ExtendPromise. It expect a number of millisecond as its first argument, it's a convenient way to define a timeout for the Promise. If the cancellation is done before the Promise is fulfilled, then it is rejected.
+
+> _Note that the cancel attempt is asynchronous, therefor a call to `cancel` with a value of `0` (or no value) doesn't guarantee the Promise will be rejected._
 
 ## Full example
 
@@ -260,9 +258,16 @@ function fetch(url) {
   });
 }
 
-fetch('https://developer.mozilla.org').then(function (result) {
-  document.documentElement.innerHTML = result;
-});
+fetch('https://developer.mozilla.org')
+  .then(function (result) {
+    document.documentElement.innerHTML = result;
+  })
+  .catch(function (err) {
+    console.log(err)
+  })
+  .progress(function (percent) {
+    console.log('Loading: ' + percent.toFixed(1) + '%')
+  });
 ```
 
-Yes, that's all! Feel free to make it smarter by adding a second object acting like an HTTP configuration object.
+Yes, that's all! Feel free to make that fetch function smarter by adding a second parameter providing an HTTP headers configuration object.
