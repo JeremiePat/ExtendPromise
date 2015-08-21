@@ -3,35 +3,38 @@
 
 // REQUIRED MODULES FOR TESTING
 // ============================================================================
-var assert        = require('assert');
-var ExtendPromise = require('../extendpromise.js');
-var noop          = function () {};
+var assert          = require('assert');
+var ExtendPromise   = require('../extendpromise.js');
+
+// PARAMS
+// ----------------------------------------------------------------------------
+var noop            = function () {};
+var cancelFulfilled = 20;
 
 
 // UTILS
 // ============================================================================
-var progressCount = 5;
-
-function buildResolver(result, async) {
-  var count = progressCount;
+function buildResolver(result, async, count) {
+  count = count === +count && count >= 0 ? count :  1;
+  async = async === +async && async >= 0 ? async : -1;
 
   function resolver(resolve, reject, next) {
     if (result === 'resolve' || count === 0) {
-      if (async) { setTimeout(resolve, 0); }
+      if (async > -1) { setTimeout(resolve, async); }
       else { resolve(); }
     }
 
     else if (result === 'reject') {
-      if (async) { setTimeout(reject, 0); }
+      if (async > -1) { setTimeout(reject, async); }
       else { reject(); }
     }
 
     else {
-      if (async) {
+      if (async > -1) {
         setTimeout(function () {
           next(--count);
           resolver(resolve, reject, next);
-        }, 0);
+        }, async);
       } else {
         next(--count);
         resolver(resolve, reject, next);
@@ -58,312 +61,535 @@ function pendingCallStatus(method, isCalled, timeout) {
   };
 }
 
+// Runner
+// ----------------------------------------------------------------------------
+function testRunner(test) {
+  if (test.tests) {
+    describe(test.title, function () {
+      testRunner(test.tests);
+    });
+  } else if (Array.isArray(test)) {
+    test.forEach(function (test) {
+      if (test.tests) {
+        describe(test.title, function () {
+          testRunner(test.tests);
+        });
+      } else {
+        it(test.title, function (done) {
+          test.test(test.value, test.expect, done, this);
+        });
+      }
+    });
+  }
+}
+
+// Basic test function
+// ----------------------------------------------------------------------------
+
+function chkType(value, expect, done) {
+  assert.strictEqual(typeof value, expect);
+  done();
+}
+
+function chkSuccessInstance(value, expect, done) {
+  assert.strictEqual(value(expect) instanceof ExtendPromise, true);
+  done();
+}
+
+function chkFailInstance(value, expect, done) {
+  assert.throws(function () { value(expect); }, Error);
+  done();
+}
+
+function chkThenResolution(value, expect, done) {
+  var request = ExtendPromise(value);
+  pendingCallStatus(request.then.bind(request), expect, 10)(done);
+}
+
+function chkCatchResolution(value, expect, done) {
+  var request = ExtendPromise(value);
+  pendingCallStatus(request.catch.bind(request), expect, 10)(done);
+}
+
+function chkProgressResolution(value, expect, done) {
+  var request = ExtendPromise(value);
+  pendingCallStatus(request.progress.bind(request), expect, 10)(done);
+}
+
+function chkProgress(value, expect, done, context) {
+  context.timeout(50 * (expect + 1));
+
+  var request = ExtendPromise(value);
+  var count = 0;
+
+  function resolve(isOk) {
+    if (!isOk) {
+      assert.ok(false, 'Progress should be fulfilled once progress is done');
+    }
+
+    else {
+      assert.equal(count, expect);
+    }
+
+    done();
+  }
+
+  request.progress(function () {
+    count++;
+  })
+  .then(function () {
+    resolve(true);
+  })
+  .catch(function () {
+    resolve(false);
+  });
+}
+
+function chkCancelFulfilled(value, expect, done) {
+  ExtendPromise(expect)
+    .cancel(value)
+    .then(function () {
+      assert.ok(true);
+      done();
+    })
+    .catch(function () {
+      assert.ok(false, 'Canceling a fulfilled promess should not change its status');
+      done();
+    });
+}
+
+function chkCancelReject(value, expect, done) {
+  ExtendPromise(expect)
+    .cancel(value)
+    .then(function () {
+      assert.ok(false, 'A canceled promess should never be fulfilled');
+    })
+    .catch(function () {
+      assert.ok(true);
+    });
+
+  setTimeout(done, cancelFulfilled + 5);
+}
+
+
 // TESTS DEFINITION
 // ============================================================================
 
-// Basic check for the module signature
-// ----------------------------------------------------------------------------
-function extendPromiseSignature() {
-  [
-    {name: 'ExtendPromise',      val: ExtendPromise,      type: 'function'},
-    {name: 'ExtendPromise.all',  val: ExtendPromise.all,  type: 'function'},
-    {name: 'ExtendPromise.none', val: ExtendPromise.none, type: 'function'},
-    {name: 'ExtendPromise.race', val: ExtendPromise.race, type: 'function'},
-    {name: 'ExtendPromise.some', val: ExtendPromise.some, type: 'function'},
-  ]
-  .forEach(function (test) {
-    var title = [test.name, ' should be "', test.type, '"'].join('');
-
-    it(title, function () {
-      assert.strictEqual(typeof test.val, test.type);
-    });
-  });
-}
-
-// Check for basic input and output of ExtendPromise methods
-// ----------------------------------------------------------------------------
-function extendPromiseIOThrow() {
-  [
-    {fn: ExtendPromise,      val: undefined, type: 'undefined'},
-    {fn: ExtendPromise,      val: null,      type: 'null'},
-    {fn: ExtendPromise,      val: true,      type: 'Boolean'},
-    {fn: ExtendPromise,      val: 1,         type: 'Number'},
-    {fn: ExtendPromise,      val: 'test',    type: 'String'},
-    {fn: ExtendPromise,      val: {},        type: 'Object'},
-    {fn: ExtendPromise,      val: [],        type: 'Array'},
-    {fn: ExtendPromise.all,  val: undefined, type: 'undefined'},
-    {fn: ExtendPromise.all,  val: null,      type: 'null'},
-    {fn: ExtendPromise.all,  val: true,      type: 'Boolean'},
-    {fn: ExtendPromise.all,  val: 1,         type: 'Number'},
-    {fn: ExtendPromise.all,  val: 'test',    type: 'String'},
-    {fn: ExtendPromise.all,  val: {},        type: 'Object'},
-    {fn: ExtendPromise.all,  val: [],        type: 'empty Array'},
-    {fn: ExtendPromise.all,  val: noop,      type: 'function'},
-    {fn: ExtendPromise.none, val: undefined, type: 'undefined'},
-    {fn: ExtendPromise.none, val: null,      type: 'null'},
-    {fn: ExtendPromise.none, val: true,      type: 'Boolean'},
-    {fn: ExtendPromise.none, val: 1,         type: 'Number'},
-    {fn: ExtendPromise.none, val: 'test',    type: 'String'},
-    {fn: ExtendPromise.none, val: {},        type: 'Object'},
-    {fn: ExtendPromise.none, val: [],        type: 'empty Array'},
-    {fn: ExtendPromise.none, val: noop,      type: 'function'},
-    {fn: ExtendPromise.race, val: undefined, type: 'undefined'},
-    {fn: ExtendPromise.race, val: null,      type: 'null'},
-    {fn: ExtendPromise.race, val: true,      type: 'Boolean'},
-    {fn: ExtendPromise.race, val: 1,         type: 'Number'},
-    {fn: ExtendPromise.race, val: 'test',    type: 'String'},
-    {fn: ExtendPromise.race, val: {},        type: 'Object'},
-    {fn: ExtendPromise.race, val: [],        type: 'empty Array'},
-    {fn: ExtendPromise.race, val: noop,      type: 'function'},
-    {fn: ExtendPromise.some, val: undefined, type: 'undefined'},
-    {fn: ExtendPromise.some, val: null,      type: 'null'},
-    {fn: ExtendPromise.some, val: true,      type: 'Boolean'},
-    {fn: ExtendPromise.some, val: 1,         type: 'Number'},
-    {fn: ExtendPromise.some, val: 'test',    type: 'String'},
-    {fn: ExtendPromise.some, val: {},        type: 'Object'},
-    {fn: ExtendPromise.some, val: [],        type: 'empty Array'},
-    {fn: ExtendPromise.some, val: noop,      type: 'function'}
-  ]
-  .forEach(function (test) {
-    var title = [
-      test.fn.name === 'ExtendPromise' ? '' : 'ExtendPromise.',
-      test.fn.name,' should throw with ', test.type, ' input'
-    ].join('');
-
-    it(title, function () {
-      assert.throws(function () {
-        test.fn(test.val);
-      }, Error);
-    });
-  });
-}
-
-function extendPromiseIOReturn() {
-  [
-    {fn: ExtendPromise,      val: noop},
-    {fn: ExtendPromise.all,  val: [ExtendPromise(noop)]},
-    {fn: ExtendPromise.none, val: [ExtendPromise(noop)]},
-    {fn: ExtendPromise.race, val: [ExtendPromise(noop)]},
-    {fn: ExtendPromise.some, val: [ExtendPromise(noop)]}
-  ]
-  .forEach(function (test) {
-    var title = [
-      'Output from ',
-      test.fn.name === 'ExtendPromise' ? '' : 'ExtendPromise.',
-      test.fn.name, ' is an instance of ExtendPromise'].join('');
-
-    it(title, function () {
-      var request = test.fn(test.val);
-
-      assert.strictEqual(request instanceof ExtendPromise, true);
-      assert.strictEqual(typeof request.then,     'function');
-      assert.strictEqual(typeof request.catch,    'function');
-      assert.strictEqual(typeof request.progress, 'function');
-      assert.strictEqual(typeof request.cancel,   'function');
-    });
-  });
-}
-
-function extendPromiseIO() {
-  describe('Expected input failure',  extendPromiseIOThrow);
-  describe('Expected output success', extendPromiseIOReturn);
-}
-
-// Test basic Promise functionality
-// ----------------------------------------------------------------------------
-function extendPromiseBasic() {
-  [
-    { title: 'Check basic promise fulfilled',
-      resolver: 'resolve', results: [
-      {fn: 'catch',    isCalled: false},
-      {fn: 'progress', isCalled: false},
-      {fn: 'then',     isCalled: true }
-    ]},
-    { title: 'Check basic promise reject',
-      resolver: 'reject', results: [
-      {fn: 'catch',    isCalled: true },
-      {fn: 'progress', isCalled: false},
-      {fn: 'then',     isCalled: false}
-    ]}
-  ]
-  .forEach(function (test) {
-    describe(test.title, function () {
-      describe('Test synchronous resolution', function () {
-        var request = ExtendPromise(buildResolver(test.resolver, false));
-
-        test.results.forEach(function (result) {
-          var title = [result.fn, ' callback is ', result.isCalled ? '' : 'never ', 'call'].join('');
-          it(title, pendingCallStatus(request[result.fn].bind(request), result.isCalled, 10));
-        });
-      });
-
-      describe('Test asynchronous resolution', function () {
-        var request = ExtendPromise(buildResolver(test.resolver, true));
-
-        test.results.forEach(function (result) {
-          var title = [result.fn, ' callback is ', result.isCalled ? '' : 'never ', 'call'].join('');
-          it(title, pendingCallStatus(request[result.fn].bind(request), result.isCalled, 10));
-        });
-      });
-    });
-  });
-}
-
-// Test progress Promise functionality
-// ----------------------------------------------------------------------------
-function extendPromiseProgress() {
-  it('Progress ' + progressCount + ' time then fulfilled', function (done) {
-    this.timeout(50 * (progressCount + 1));
-
-    var request = ExtendPromise(buildResolver('progress', true));
-    var count   = 0;
-
-    function resolve(isOk) {
-      if (!isOk) {
-        assert.ok(false, 'Progress should be fulfilled once progress is done');
-      }
-
-      else {
-        assert.equal(count, progressCount);
-      }
-
-      done();
-    }
-
-    request.progress(function () {
-      count++;
-    })
-    .then(function () {
-      resolve(true);
-    })
-    .catch(function () {
-      resolve(false);
-    });
-  });
-
-  it('A sync call to the next() resolver does not trigger any progress callback', function (done) {
-    this.timeout(50 * (progressCount + 1));
-
-    var request = ExtendPromise(buildResolver('progress', false));
-    var count   = 0;
-
-    function resolve(isOk) {
-      if (!isOk) {
-        assert.ok(false, 'Progress should be fulfilled once progress is done');
-      }
-
-      else {
-        assert.equal(count, 0);
-      }
-
-      done();
-    }
-
-    request.progress(function () {
-      count++;
-    })
-    .then(function () {
-      resolve(true);
-    })
-    .catch(function () {
-      resolve(false);
-    });
-  });
-}
-
-// Test cancel Promise functionality
-// ----------------------------------------------------------------------------
-function extendPromiseCancel() {
-  function simpleCanceling(value) {
-    var isTrue      = value === true;
-    var isFalse     = value === false;
-    var isString    = typeof value === 'string';
-    var isUndefined = typeof value === 'undefined';
-    var isNaN       = Number.isNaN(value);
-    var isArray     = Array.isArray(value);
-    var isNull      = !value && typeof value === 'object';
-    var isFunction  = typeof value === 'function';
-    var isObject    = !isArray && !isNull && typeof value === 'object';
-    var title = ['Call ExtendPromise.cancel(',
-      isString ? '"': '',
-      isNaN ? 'NaN' :
-      isUndefined ? 'undefined' :
-      isNull ? 'null' :
-      isFunction ? 'function () {}' :
-      isTrue ? 'true' :
-      isFalse ? 'false' :
-      isObject ? '{}' :
-      isArray ? '[]'  : value,
-      isString ? '"': '',
-      ') (attempt to be fulfilled after 100ms)'].join('');
-
-    it(title, function (done) {
-      var request = ExtendPromise(function (resolve) {
-        setTimeout(resolve, 100);
-      });
-
-      request
-      .then(function () {
-        assert.ok(false, 'A canceled promess should never be fulfilled');
-        done();
-      })
-      .catch(function () {
-        assert.ok(true);
-        done();
-      })
-      .cancel(value);
-    });
-  }
-
-  describe('Check calling cancel() with numeric values (numbers or string representing numbers)', function () {
-    [-1, '-1', 0, '0', 30, '30'].forEach(simpleCanceling);
-  });
-
-  describe('Calling cancel() with non numeric value should act as if it where 0', function () {
-    [noop, null, NaN, [], {}, true, false].forEach(simpleCanceling);
-  });
-
-  it('Cancel a fulfilled promise does not change its status', function (done) {
-    var request = ExtendPromise(function (resolve) {
-      resolve();
-    });
-
-    request
-    .catch(function () {
-      assert.ok(false, 'Canceling a fulfilled promess should not change its status');
-      done();
-    })
-    .cancel(0);
-
-    setTimeout(function () {
-      assert.ok(true);
-      done();
-    }, 10);
-  });
-
-  it('Cancelling a promise is always asynchrounous', function (done) {
-    var request = ExtendPromise(function (resolve) {
-      setTimeout(resolve, 0);
-    });
-
-    request
-    .then(function () {
-      assert.ok(true);
-      done();
-    })
-    .catch(function () {
-      assert.ok(false, 'Canceling a fulfilled promess should not change its status');
-      done();
-    })
-    .cancel(0);
-  });
-}
-
-// RUN TESTS
-// ============================================================================
-
-describe('Check ExtendPromise module signature', extendPromiseSignature);
-describe('Check ExtendPromise IO', extendPromiseIO);
-describe('Check ExtendPromise basic resolution', extendPromiseBasic);
-describe('Check ExtendPromise progress', extendPromiseProgress);
-describe('Check ExtendPromise cancel', extendPromiseCancel);
+testRunner(
+  [ { title: 'ExtendPromise',
+    tests:
+      [ { title: 'ExtendPromise is a function',
+        test  : chkType,
+        value : ExtendPromise,
+        expect: 'function'
+      },{ title: 'ExtendPromise return an ExtendPromise',
+        test  : chkSuccessInstance,
+        value : ExtendPromise,
+        expect: noop
+      },{ title: 'ExtendPromise throw with undefined',
+        test  : chkFailInstance,
+        value : ExtendPromise,
+        expect: undefined
+      },{ title: 'ExtendPromise throw with null',
+        test  : chkFailInstance,
+        value : ExtendPromise,
+        expect: null
+      },{ title: 'ExtendPromise throw with Boolean (true)',
+        test  : chkFailInstance,
+        value : ExtendPromise,
+        expect: true
+      },{ title: 'ExtendPromise throw with Boolean (false)',
+        test  : chkFailInstance,
+        value : ExtendPromise,
+        expect: false
+      },{ title: 'ExtendPromise throw with Number (1)',
+        test  : chkFailInstance,
+        value : ExtendPromise,
+        expect: 1
+      },{ title: 'ExtendPromise throw with Number (0)',
+        test  : chkFailInstance,
+        value : ExtendPromise,
+        expect: 0
+      },{ title: 'ExtendPromise throw with String ("test")',
+        test  : chkFailInstance,
+        value : ExtendPromise,
+        expect: 'test'
+      },{ title: 'ExtendPromise throw with String ("")',
+        test  : chkFailInstance,
+        value : ExtendPromise,
+        expect: ''
+      },{ title: 'ExtendPromise throw with Object ({})',
+        test  : chkFailInstance,
+        value : ExtendPromise,
+        expect: {}
+      },{ title: 'ExtendPromise throw with Array ([])',
+        test  : chkFailInstance,
+        value : ExtendPromise,
+        expect: []
+      } ]
+  },{ title: 'ExtendPromise.all',
+    tests:
+      [ { title: 'ExtendPromise.all is a function',
+        test  : chkType,
+        value : ExtendPromise.all,
+        expect: 'function'
+      },{ title: 'ExtendPromise.all return an ExtendPromise',
+        test  : chkSuccessInstance,
+        value : ExtendPromise.all,
+        expect: [ExtendPromise(noop)]
+      },{ title: 'ExtendPromise.all throw with undefined',
+        test  : chkFailInstance,
+        value : ExtendPromise.all,
+        expect: undefined
+      },{ title: 'ExtendPromise.all throw with null',
+        test  : chkFailInstance,
+        value : ExtendPromise.all,
+        expect: null
+      },{ title: 'ExtendPromise.all throw with Boolean (true)',
+        test  : chkFailInstance,
+        value : ExtendPromise.all,
+        expect: true
+      },{ title: 'ExtendPromise.all throw with Boolean (false)',
+        test  : chkFailInstance,
+        value : ExtendPromise.all,
+        expect: false
+      },{ title: 'ExtendPromise.all throw with Number (1)',
+        test  : chkFailInstance,
+        value : ExtendPromise.all,
+        expect: 1
+      },{ title: 'ExtendPromise.all throw with Number (0)',
+        test  : chkFailInstance,
+        value : ExtendPromise.all,
+        expect: 0
+      },{ title: 'ExtendPromise.all throw with String ("test")',
+        test  : chkFailInstance,
+        value : ExtendPromise.all,
+        expect: 'test'
+      },{ title: 'ExtendPromise.all throw with String ("")',
+        test  : chkFailInstance,
+        value : ExtendPromise.all,
+        expect: ''
+      },{ title: 'ExtendPromise.all throw with Object ({})',
+        test  : chkFailInstance,
+        value : ExtendPromise.all,
+        expect: {}
+      },{ title: 'ExtendPromise.all throw with empty Array ([])',
+        test  : chkFailInstance,
+        value : ExtendPromise.all,
+        expect: []
+      },{ title: 'ExtendPromise.all throw with function',
+        test  : chkFailInstance,
+        value : ExtendPromise.all,
+        expect: noop
+      } ]
+  },{ title: 'ExtendPromise.none',
+    tests:
+      [ { title: 'ExtendPromise.none is a function',
+        test  : chkType,
+        value : ExtendPromise.none,
+        expect: 'function'
+      },{ title: 'ExtendPromise.none return an ExtendPromise',
+        test  : chkSuccessInstance,
+        value : ExtendPromise.none,
+        expect: [ExtendPromise(noop)]
+      },{ title: 'ExtendPromise.none throw with undefined',
+        test  : chkFailInstance,
+        value : ExtendPromise.none,
+        expect: undefined
+      },{ title: 'ExtendPromise.none throw with null',
+        test  : chkFailInstance,
+        value : ExtendPromise.none,
+        expect: null
+      },{ title: 'ExtendPromise.none throw with Boolean (true)',
+        test  : chkFailInstance,
+        value : ExtendPromise.none,
+        expect: true
+      },{ title: 'ExtendPromise.none throw with Boolean (false)',
+        test  : chkFailInstance,
+        value : ExtendPromise.none,
+        expect: false
+      },{ title: 'ExtendPromise.none throw with Number (1)',
+        test  : chkFailInstance,
+        value : ExtendPromise.none,
+        expect: 1
+      },{ title: 'ExtendPromise.none throw with Number (0)',
+        test  : chkFailInstance,
+        value : ExtendPromise.none,
+        expect: 1
+      },{ title: 'ExtendPromise.none throw with String ("test")',
+        test  : chkFailInstance,
+        value : ExtendPromise.none,
+        expect: 'test'
+      },{ title: 'ExtendPromise.none throw with String ("")',
+        test  : chkFailInstance,
+        value : ExtendPromise.none,
+        expect: ''
+      },{ title: 'ExtendPromise.none throw with Object ({})',
+        test  : chkFailInstance,
+        value : ExtendPromise.none,
+        expect: {}
+      },{ title: 'ExtendPromise.none throw with empty Array ([])',
+        test  : chkFailInstance,
+        value : ExtendPromise.none,
+        expect: []
+      },{ title: 'ExtendPromise.none throw with function',
+        test  : chkFailInstance,
+        value : ExtendPromise.none,
+        expect: noop
+      } ]
+  },{ title: 'ExtendPromise.race',
+    tests:
+      [ { title: 'ExtendPromise.race is a function',
+        test  : chkType,
+        value : ExtendPromise.race,
+        expect: 'function'
+      },{ title: 'ExtendPromise.race return an ExtendPromise',
+        test  : chkSuccessInstance,
+        value : ExtendPromise.race,
+        expect: [ExtendPromise(noop)]
+      },{ title: 'ExtendPromise.race throw with undefined',
+        test  : chkFailInstance,
+        value : ExtendPromise.race,
+        expect: undefined
+      },{ title: 'ExtendPromise.race throw with null',
+        test  : chkFailInstance,
+        value : ExtendPromise.race,
+        expect: null
+      },{ title: 'ExtendPromise.race throw with Boolean (true)',
+        test  : chkFailInstance,
+        value : ExtendPromise.race,
+        expect: true
+      },{ title: 'ExtendPromise.race throw with Boolean (false)',
+        test  : chkFailInstance,
+        value : ExtendPromise.race,
+        expect: false
+      },{ title: 'ExtendPromise.race throw with Number (1)',
+        test  : chkFailInstance,
+        value : ExtendPromise.race,
+        expect: 1
+      },{ title: 'ExtendPromise.race throw with Number (0)',
+        test  : chkFailInstance,
+        value : ExtendPromise.race,
+        expect: 0
+      },{ title: 'ExtendPromise.race throw with String ("test")',
+        test  : chkFailInstance,
+        value : ExtendPromise.race,
+        expect: 'test'
+      },{ title: 'ExtendPromise.race throw with String ("")',
+        test  : chkFailInstance,
+        value : ExtendPromise.race,
+        expect: ''
+      },{ title: 'ExtendPromise.race throw with Object ({})',
+        test  : chkFailInstance,
+        value : ExtendPromise.race,
+        expect: {}
+      },{ title: 'ExtendPromise.race throw with empty Array ([])',
+        test  : chkFailInstance,
+        value : ExtendPromise.race,
+        expect: []
+      },{ title: 'ExtendPromise.race throw with function',
+        test  : chkFailInstance,
+        value : ExtendPromise.race,
+        expect: noop
+      } ]
+  },{ title: 'ExtendPromise.some',
+    tests:
+      [ { title: 'ExtendPromise.some is a function',
+        test  : chkType,
+        value : ExtendPromise.some,
+        expect: 'function'
+      },{ title: 'ExtendPromise.some return an ExtendPromise',
+        test  : chkSuccessInstance,
+        value : ExtendPromise.some,
+        expect: [ExtendPromise(noop)]
+      },{ title: 'ExtendPromise.some throw with undefined',
+        test  : chkFailInstance,
+        value : ExtendPromise.some,
+        expect: undefined
+      },{ title: 'ExtendPromise.some throw with null',
+        test  : chkFailInstance,
+        value : ExtendPromise.some,
+        expect: null
+      },{ title: 'ExtendPromise.some throw with Boolean (true)',
+        test  : chkFailInstance,
+        value : ExtendPromise.some,
+        expect: true
+      },{ title: 'ExtendPromise.some throw with Boolean (false)',
+        test  : chkFailInstance,
+        value : ExtendPromise.some,
+        expect: false
+      },{ title: 'ExtendPromise.some throw with Number (1)',
+        test  : chkFailInstance,
+        value : ExtendPromise.some,
+        expect: 1
+      },{ title: 'ExtendPromise.some throw with Number (0)',
+        test  : chkFailInstance,
+        value : ExtendPromise.some,
+        expect: 0
+      },{ title: 'ExtendPromise.some throw with String ("test")',
+        test  : chkFailInstance,
+        value : ExtendPromise.some,
+        expect: 'test'
+      },{ title: 'ExtendPromise.some throw with String ("")',
+        test  : chkFailInstance,
+        value : ExtendPromise.some,
+        expect: ''
+      },{ title: 'ExtendPromise.some throw with Object ({})',
+        test  : chkFailInstance,
+        value : ExtendPromise.some,
+        expect: {}
+      },{ title: 'ExtendPromise.some throw with empty Array ([])',
+        test  : chkFailInstance,
+        value : ExtendPromise.some,
+        expect: []
+      },{ title: 'ExtendPromise.some throw with function',
+        test  : chkFailInstance,
+        value : ExtendPromise.some,
+        expect: noop
+      } ]
+  },{ title: 'promise.then',
+    tests:
+      [ { title: 'Record callback is called when the promise is fulfilled (synch)',
+        test  : chkThenResolution,
+        value : buildResolver('resolve', false),
+        expect: true
+      },{ title: 'Record callback is called when the promise is fulfilled (asynch)',
+        test  : chkThenResolution,
+        value : buildResolver('resolve', 0),
+        expect: true
+      },{ title: 'Record callback is NOT called when the promise is rejected (synch)',
+        test  : chkThenResolution,
+        value : buildResolver('reject', false),
+        expect: false
+      },{ title: 'Record callback is NOT called when the promise is rejected (asynch)',
+        test  : chkThenResolution,
+        value : buildResolver('reject', 0),
+        expect: false
+      }]
+  },{ title: 'promise.catch',
+    tests:
+      [ { title: 'Record callback is called when the promise is rejected (synch)',
+        test  : chkCatchResolution,
+        value : buildResolver('reject', false),
+        expect: true
+      },{ title: 'Record callback is called when the promise is rejected (asynch)',
+        test  : chkCatchResolution,
+        value : buildResolver('reject', 0),
+        expect: true
+      },{ title: 'Record callback is NOT called when the promise is fulfilled (synch)',
+        test  : chkCatchResolution,
+        value : buildResolver('resolve', false),
+        expect: false
+      },{ title: 'Record callback is NOT called when the promise is fulfilled (asynch)',
+        test  : chkCatchResolution,
+        value : buildResolver('resolve', 0),
+        expect: false
+      }]
+  },{ title: 'promise.progress',
+    tests:
+      [ { title: 'Record callback is NOT called when the promise is just fulfilled (synch)',
+        test  : chkProgressResolution,
+        value : buildResolver('reject', false),
+        expect: false
+      },{ title: 'Record callback is NOT called when the promise is just fulfilled (asynch)',
+        test  : chkProgressResolution,
+        value : buildResolver('reject', 0),
+        expect: false
+      },{ title: 'Record callback is NOT called when the promise is just rejected (synch)',
+        test  : chkProgressResolution,
+        value : buildResolver('resolve', false),
+        expect: false
+      },{ title: 'Record callback is NOT called when the promise is just rejected (asynch)',
+        test  : chkProgressResolution,
+        value : buildResolver('resolve', 0),
+        expect: false
+      },{ title: 'Progress 5 times then fulfilled',
+        test  : chkProgress,
+        value : buildResolver('progress', 0, 5),
+        expect: 5
+      },{ title: 'Progress 5 times then fulfilled',
+        test  : chkProgress,
+        value : buildResolver('progress', 0, 5),
+        expect: 5
+      },{ title: 'Do not progress when the promised is fulfilled synchronously',
+        test  : chkProgress,
+        value : buildResolver('progress', false, 5),
+        expect: 0
+      }]
+  },{ title: 'promise.cancel',
+    tests:
+      [ { title: 'Cancel a synchrounous fulfilled promise does not change its status',
+        test  : chkCancelFulfilled,
+        value : 0,
+        expect: buildResolver('resolve', false)
+      },{ title: 'Cancel an asynchrounous fulfilled promise does not change its status',
+        test  : chkCancelFulfilled,
+        value : 20,
+        expect: buildResolver('resolve', 10)
+      },{ title: 'Cancel is always asynchrounous',
+        test  : chkCancelFulfilled,
+        value : 0,
+        expect: buildResolver('resolve', 0)
+      },{ title: 'Cancel with 0 - try to fulfilled after ' + cancelFulfilled + 'ms',
+        test  : chkCancelReject,
+        value : 0,
+        expect: buildResolver('resolve', cancelFulfilled)
+      },{ title: 'Cancel with a positive number (10) - try to fulfilled after ' + cancelFulfilled + 'ms',
+        test  : chkCancelReject,
+        value : 10,
+        expect: buildResolver('resolve', cancelFulfilled)
+      },{ title: 'Cancel with a string ("10") - try to fulfilled after ' + cancelFulfilled + 'ms',
+        test  : chkCancelReject,
+        value : '10',
+        expect: buildResolver('resolve', cancelFulfilled)
+      },{ title: 'Cancel with a negative number (-1) - try to fulfilled after ' + cancelFulfilled + 'ms',
+        test  : chkCancelReject,
+        value : -1,
+        expect: buildResolver('resolve', cancelFulfilled)
+      },{ title: 'Cancel with a string ("") - try to fulfilled after ' + cancelFulfilled + 'ms',
+        test  : chkCancelReject,
+        value : '',
+        expect: buildResolver('resolve', cancelFulfilled)
+      },{ title: 'Cancel with a string ("0") - try to fulfilled after ' + cancelFulfilled + 'ms',
+        test  : chkCancelReject,
+        value : '0',
+        expect: buildResolver('resolve', cancelFulfilled)
+      },{ title: 'Cancel with a string ("-1") - try to fulfilled after ' + cancelFulfilled + 'ms',
+        test  : chkCancelReject,
+        value : '-1',
+        expect: buildResolver('resolve', cancelFulfilled)
+      },{ title: 'Cancel with a function - try to fulfilled after ' + cancelFulfilled + 'ms',
+        test  : chkCancelReject,
+        value : noop,
+        expect: buildResolver('resolve', cancelFulfilled)
+      },{ title: 'Cancel with null - try to fulfilled after ' + cancelFulfilled + 'ms',
+        test  : chkCancelReject,
+        value : null,
+        expect: buildResolver('resolve', cancelFulfilled)
+      },{ title: 'Cancel with undefined - try to fulfilled after ' + cancelFulfilled + 'ms',
+        test  : chkCancelReject,
+        value : undefined,
+        expect: buildResolver('resolve', cancelFulfilled)
+      },{ title: 'Cancel with NaN - try to fulfilled after ' + cancelFulfilled + 'ms',
+        test  : chkCancelReject,
+        value : 1/0,
+        expect: buildResolver('resolve', cancelFulfilled)
+      },{ title: 'Cancel with an Object ({}) - try to fulfilled after ' + cancelFulfilled + 'ms',
+        test  : chkCancelReject,
+        value : {},
+        expect: buildResolver('resolve', cancelFulfilled)
+      },{ title: 'Cancel with an Array ([]) - try to fulfilled after ' + cancelFulfilled + 'ms',
+        test  : chkCancelReject,
+        value : '10',
+        expect: buildResolver('resolve', cancelFulfilled)
+      },{ title: 'Cancel with a boolean (true) - try to fulfilled after ' + cancelFulfilled + 'ms',
+        test  : chkCancelReject,
+        value : true,
+        expect: buildResolver('resolve', cancelFulfilled)
+      },{ title: 'Cancel with a boolean (false) - try to fulfilled after ' + cancelFulfilled + 'ms',
+        test  : chkCancelReject,
+        value : false,
+        expect: buildResolver('resolve', cancelFulfilled)
+      } ]
+  } ]
+);
