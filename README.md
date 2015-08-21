@@ -267,7 +267,9 @@ fetch('https://developer.mozilla.org')
   })
   .progress(function (percent) {
     console.log('Loading: ' + percent.toFixed(1) + '%')
-  });
+  })
+  // If it takes more than 10s to load, let's timeout
+  .cancel(10000);
 ```
 
 Yes, that's all! Feel free to make that fetch function smarter by adding a second parameter providing an HTTP headers configuration object.
