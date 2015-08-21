@@ -338,7 +338,7 @@
   // --------------------------------------------------------------------------
   // Only for people who wish to test `ExtendPromise instanceof Promise`
   // but ExtendPromise is not meant to be extensible through prototype
-  if (Promise) {
+  if (typeof Promise !== 'undefined') {
     ExtendPromise.prototype = Object.create(Promise.prototype);
   }
 
